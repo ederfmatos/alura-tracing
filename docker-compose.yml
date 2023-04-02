@@ -1,17 +1,17 @@
 version: '3.8'
 
 networks:
-  public:
   monit:
   data:
   api:
   
 services:
-
   database-api-cursos:
     image: kdpsc/alura:database-api-cursos
     container_name: database-api-cursos
     restart: unless-stopped
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
     healthcheck:
       test: [ "CMD", "pg_isready", "-q", "-d", "postgres", "-U", "root" ]
       timeout: 45s
@@ -82,3 +82,58 @@ services:
       - monit
     depends_on:
       - grafana-api-cursos
+
+  collector-api-cursos:
+    image: otel/opentelemetry-collector:latest
+    container_name: collector-api-cursos
+    volumes:
+      - ./collector/otel-collection-config.yaml:/etc/otel-collection-config.yaml
+    command: ["--config=/etc/otel-collection-config.yaml"]
+    ports:
+      - 4317:4317
+      - 4318:4318
+    networks:
+      - api
+      - monit
+    depends_on:
+      - loki-api-cursos
+
+  jaeger-api-cursos:
+    image: jaegertracing/opentelemetry-all-in-one
+    container_name: jaeger-api-cursos
+    ports:
+      - 16686:16686
+    networks:
+      - monit
+    depends_on:
+      - collector-api-cursos
+
+  # api-cursos:
+  #   build:
+  #       context: ./logs/
+  #       dockerfile: Dockerfile
+  #   image: api-cursos
+  #   container_name: api-cursos
+  #   environment:
+  #       - SPRING_DATASOURCE_URL=database-api-cursos
+  #       - SPRING_REDIS_HOST=cache-api-cursos
+  #       - OTEL_SERVICE_NAME=api_cursos
+  #       - OTEL_TRACES_EXPORTER=otlp
+  #       - OTEL_METRICS_EXPORTER=none
+  #       - OTEL_INTEGRATION_JDBC_DATASOURCE_ENABLED=true
+  #       - OTEL_INSTRUMENTATION_JDBC_DATASOURCE_ENABLED=true
+  #       - OTEL_EXPORTER_OTLP_ENDPOINT=http://collector-api-cursos:4318/
+  #       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+  #   restart: unless-stopped
+  #   ports:
+  #       - 8080:8080
+  #   networks:
+  #       - api
+  #       - data
+  #   healthcheck:
+  #       test: "curl -sS http://api-cursos:8080/actuator/health"
+  #       interval: 1s
+  #       timeout: 30s
+  #       retries: 60
+  #   depends_on:
+  #       - cache-api-cursos
